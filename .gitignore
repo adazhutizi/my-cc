@@ -1,0 +1,15 @@
+/target
+*.rs.bk
+*.swp
+*.swo
+*~
+.DS_Store
+.env
+
+# IDE
+.idea/
+.vscode/
+*.code-workspace
+.fleet/
+*.iml
+.claude/
