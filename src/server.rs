@@ -93,10 +93,16 @@ async fn handle_request(
             }
         }
 
+        let last_seq = req.uri().query().and_then(|q| {
+            q.split('&')
+                .find(|p| p.starts_with("lastSeq="))
+                .and_then(|p| p[8..].parse::<u64>().ok())
+        });
+
         let (response, websocket) = hyper_tungstenite::upgrade(&mut req, None)?;
 
         tokio::spawn(async move {
-            if let Err(e) = handle_websocket(websocket, bus).await {
+            if let Err(e) = handle_websocket(websocket, bus, last_seq).await {
                 log::debug!("websocket error: {e}");
             }
         });
@@ -110,10 +116,10 @@ async fn handle_request(
 async fn handle_websocket(
     websocket: hyper_tungstenite::HyperWebsocket,
     bus: EventBus,
+    last_seq: Option<u64>,
 ) -> Result<()> {
     let mut ws = websocket.await?;
 
-    // Subscribe before replay to avoid missing output produced while replay is sent.
     let mut output_rx = bus.subscribe_output();
     let input_sender = bus.input_sender();
     let mut resize_rx = bus.subscribe_resize();
@@ -123,13 +129,18 @@ async fn handle_websocket(
         ws.send(Message::binary(msg)).await?;
     }
 
-    let (replay_mark, replay_data) = bus.output_replay().await;
-    for data in replay_data {
-        let msg = protocol::Message::output(data).encode();
+    let last = last_seq.unwrap_or(0);
+    let (full, replay_events) = bus.output_replay_from(last);
+
+    let replay_mode = protocol::Message::replay_mode(full);
+    ws.send(Message::binary(replay_mode.encode())).await?;
+
+    let replay_mark = replay_events.last().map(|e| e.seq).unwrap_or(0);
+    for event in &replay_events {
+        let msg = protocol::Message::output(event.seq, event.data.clone()).encode();
         ws.send(Message::binary(msg)).await?;
     }
 
-    // Signal end of replay so client can stop suppressing input
     let replay_end = protocol::Message {
         msg_type: protocol::MessageType::ReplayEnd,
         payload: Vec::new(),
@@ -140,7 +151,7 @@ async fn handle_websocket(
         match output_rx.try_recv() {
             Ok(event) if event.seq <= replay_mark => continue,
             Ok(event) => {
-                let msg = protocol::Message::output(event.data).encode();
+                let msg = protocol::Message::output(event.seq, event.data).encode();
                 ws.send(Message::binary(msg)).await?;
             }
             Err(tokio::sync::broadcast::error::TryRecvError::Empty) => break,
@@ -149,13 +160,12 @@ async fn handle_websocket(
         }
     }
 
-    // Output forwarding task
     let (mut ws_sink, mut ws_stream) = ws.split();
     let output_handle = tokio::spawn(async move {
         loop {
             tokio::select! {
                 Ok(data) = output_rx.recv() => {
-                    let msg = protocol::Message::output(data.data).encode();
+                    let msg = protocol::Message::output(data.seq, data.data).encode();
                     if ws_sink.send(Message::binary(msg)).await.is_err() {
                         break;
                     }
@@ -171,7 +181,6 @@ async fn handle_websocket(
         }
     });
 
-    // Input forwarding from client
     while let Some(msg) = ws_stream.next().await {
         match msg {
             Ok(Message::Binary(data)) => {

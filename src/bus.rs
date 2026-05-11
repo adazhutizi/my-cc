@@ -39,11 +39,22 @@ impl EventBus {
         let _ = self.output_tx.send(event);
     }
 
-    pub async fn output_replay(&self) -> (u64, Vec<Vec<u8>>) {
+    pub fn output_replay_from(&self, last_seq: u64) -> (bool, Vec<OutputEvent>) {
         let log = self.output_log.lock().unwrap();
-        let mark = log.last().map(|event| event.seq).unwrap_or(0);
-        let data = log.iter().map(|event| event.data.clone()).collect();
-        (mark, data)
+        if log.is_empty() {
+            return (last_seq == 0, Vec::new());
+        }
+        let min_seq = log.first().unwrap().seq;
+        let full = last_seq == 0 || last_seq < min_seq;
+        let events: Vec<OutputEvent> = if full {
+            log.iter().cloned().collect()
+        } else {
+            log.iter()
+                .filter(|event| event.seq > last_seq)
+                .cloned()
+                .collect()
+        };
+        (full, events)
     }
 
     pub fn record_output(&self, data: &[u8]) -> OutputEvent {

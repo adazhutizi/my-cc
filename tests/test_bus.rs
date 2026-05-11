@@ -17,15 +17,48 @@ async fn broadcast_output_to_multiple_subscribers() {
 }
 
 #[tokio::test]
-async fn output_replay_returns_current_mark_and_log() {
+async fn output_replay_from_full_when_last_seq_zero() {
     let bus = EventBus::new(64);
 
     bus.send_output(vec![1]);
     bus.send_output(vec![2]);
 
-    let (mark, data) = bus.output_replay().await;
-    assert_eq!(mark, 2);
-    assert_eq!(data, vec![vec![1], vec![2]]);
+    let (full, events) = bus.output_replay_from(0);
+    assert!(full);
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].seq, 1);
+    assert_eq!(events[0].data, vec![1]);
+    assert_eq!(events[1].seq, 2);
+    assert_eq!(events[1].data, vec![2]);
+}
+
+#[tokio::test]
+async fn output_replay_from_incremental() {
+    let bus = EventBus::new(64);
+
+    bus.send_output(vec![1]);
+    bus.send_output(vec![2]);
+    bus.send_output(vec![3]);
+
+    let (full, events) = bus.output_replay_from(1);
+    assert!(!full);
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].seq, 2);
+    assert_eq!(events[0].data, vec![2]);
+    assert_eq!(events[1].seq, 3);
+    assert_eq!(events[1].data, vec![3]);
+}
+
+#[tokio::test]
+async fn output_replay_from_fallback_to_full_when_seq_too_old() {
+    let bus = EventBus::new(64);
+
+    bus.send_output(vec![1]);
+    bus.send_output(vec![2]);
+
+    let (full, events) = bus.output_replay_from(0);
+    assert!(full);
+    assert_eq!(events.len(), 2);
 }
 
 #[tokio::test]

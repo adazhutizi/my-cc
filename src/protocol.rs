@@ -10,6 +10,7 @@ pub enum MessageType {
     Ping = 0x07,
     Pong = 0x08,
     ReplayEnd = 0x09,
+    ReplayMode = 0x0A,
 }
 
 #[derive(Debug, Clone)]
@@ -19,10 +20,38 @@ pub struct Message {
 }
 
 impl Message {
-    pub fn output(data: Vec<u8>) -> Self {
+    pub fn output(seq: u64, data: Vec<u8>) -> Self {
+        let mut payload = Vec::with_capacity(8 + data.len());
+        payload.extend_from_slice(&seq.to_be_bytes());
+        payload.extend_from_slice(&data);
         Message {
             msg_type: MessageType::Output,
-            payload: data,
+            payload,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn parse_output(&self) -> Option<(u64, &[u8])> {
+        if self.payload.len() < 8 {
+            return None;
+        }
+        let seq = u64::from_be_bytes([
+            self.payload[0],
+            self.payload[1],
+            self.payload[2],
+            self.payload[3],
+            self.payload[4],
+            self.payload[5],
+            self.payload[6],
+            self.payload[7],
+        ]);
+        Some((seq, &self.payload[8..]))
+    }
+
+    pub fn replay_mode(full: bool) -> Self {
+        Message {
+            msg_type: MessageType::ReplayMode,
+            payload: vec![if full { 1 } else { 0 }],
         }
     }
 
@@ -64,6 +93,7 @@ impl Message {
             0x07 => MessageType::Ping,
             0x08 => MessageType::Pong,
             0x09 => MessageType::ReplayEnd,
+            0x0A => MessageType::ReplayMode,
             _ => return None,
         };
         Some(Message {

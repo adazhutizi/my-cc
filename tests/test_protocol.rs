@@ -2,14 +2,16 @@ use my_cc::protocol::{Message, MessageType};
 
 #[test]
 fn encode_decode_output() {
-    let msg = Message::output(vec![0x41, 0x42, 0x43]);
+    let msg = Message::output(42, vec![0x41, 0x42, 0x43]);
     let encoded = msg.encode();
     assert_eq!(encoded[0], 0x01);
-    assert_eq!(&encoded[1..], &[0x41, 0x42, 0x43]);
+    assert_eq!(encoded.len(), 12); // 1 type + 8 seq + 3 data
 
     let decoded = Message::decode(&encoded).unwrap();
     assert!(matches!(decoded.msg_type, MessageType::Output));
-    assert_eq!(decoded.payload, vec![0x41, 0x42, 0x43]);
+    let (seq, data) = decoded.parse_output().unwrap();
+    assert_eq!(seq, 42);
+    assert_eq!(data, &[0x41, 0x42, 0x43]);
 }
 
 #[test]

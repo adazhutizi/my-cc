@@ -370,6 +370,7 @@
   var MSG_PING = 0x07;
   var MSG_PONG = 0x08;
   var MSG_REPLAY_END = 0x09;
+  var MSG_REPLAY_MODE = 0x0A;
   var term = new Terminal({
     cursorBlink: true,
     fontSize: 14,
@@ -395,6 +396,7 @@
   var serverRows = 0;
   var serverCols = 0;
   var replaying = true;
+  var lastReceivedSeq = 0;
   var layoutTimer = null;
   var writeQueue = [];
   var writing = false;
@@ -554,8 +556,11 @@
   function buildWsUrl() {
     var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     var url = proto + '//' + location.host + '/ws';
+    var params = [];
     var token = getToken();
-    if (token) url += '?token=' + encodeURIComponent(token);
+    if (token) params.push('token=' + encodeURIComponent(token));
+    if (lastReceivedSeq > 0) params.push('lastSeq=' + lastReceivedSeq);
+    if (params.length > 0) url += '?' + params.join('&');
     return url;
   }
 
@@ -592,7 +597,7 @@
       setStatus('connected', 'Connected');
       reconnectDelay = 1000;
       resetWritePipeline();
-      term.reset();
+      replaying = true;
       term.focus();
       startPing();
       scheduleLayout();
@@ -607,7 +612,14 @@
 
       switch (type) {
         case MSG_OUTPUT:
-          enqueueWrite(payload);
+          if (payload.length >= 8) {
+            var dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+            var seq = dv.getBigUint64(0, false);
+            var data = payload.slice(8);
+            if (typeof seq === 'bigint') seq = Number(seq);
+            if (seq > lastReceivedSeq) lastReceivedSeq = seq;
+            enqueueWrite(data);
+          }
           break;
         case MSG_RESIZE:
           if (payload.length >= 4) {
@@ -615,6 +627,11 @@
             serverRows = dv.getUint16(0, false);
             serverCols = dv.getUint16(2, false);
             applyLayout();
+          }
+          break;
+        case MSG_REPLAY_MODE:
+          if (payload.length >= 1 && payload[0] === 1) {
+            term.reset();
           }
           break;
         case MSG_PONG:
