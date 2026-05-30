@@ -16,7 +16,7 @@ use terminal::{get_terminal_size, run_local_terminal, TerminalGuard};
 #[cfg(unix)]
 const DEFAULT_SHELL: &str = "/bin/sh";
 #[cfg(windows)]
-const DEFAULT_SHELL: &str = "cmd.exe";
+const DEFAULT_SHELL: &str = "powershell";
 
 #[cfg(unix)]
 fn default_command() -> String {
@@ -25,7 +25,7 @@ fn default_command() -> String {
 
 #[cfg(windows)]
 fn default_command() -> String {
-    std::env::var("COMSPEC").unwrap_or_else(|_| DEFAULT_SHELL.to_string())
+    DEFAULT_SHELL.to_string()
 }
 
 #[derive(Parser)]

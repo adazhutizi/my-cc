@@ -42,7 +42,7 @@ my-cc -- vim /path/to/file
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `command` | `$SHELL` | 要代理运行的命令 |
+| `command` | `$SHELL`（Windows 为 `powershell`） | 要代理运行的命令 |
 | `args...` | 无 | 命令参数（`--` 后传入） |
 | `--port` | `8080` | Web 服务端口 |
 | `--token` | 无 | WebSocket 连接认证 token |
@@ -74,7 +74,7 @@ my-cc -- vim /path/to/file
                     本地终端    Web 客户端
 ```
 
-- **PTY Manager** — `portable-pty` 创建伪终端，独立线程处理阻塞 I/O
+- **PTY Manager** — `portable-pty` 创建伪终端，独立线程处理阻塞 I/O；Windows 上非原生可执行文件（`.ps1`、`.cmd`、`.bat`）通过 `powershell -NoLogo -Command` 包装执行，使命令解析遵循 PowerShell 的优先级
 - **Event Bus** — tokio channels：broadcast 分发输出，mpsc 合并输入，并保留最近 PTY 输出用于 Web 端回放
 - **Network Server** — hyper 提供 HTTP 静态页面 + hyper-tungstenite 处理 WebSocket
 - **Web Frontend** — xterm.js 渲染终端，二进制 WebSocket 协议通信；保持服务端 PTY 行列数不变，按浏览器可用宽度等比缩放显示，并在移动端提供快捷操作按钮

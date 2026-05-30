@@ -23,8 +23,25 @@ impl PtyProcess {
             pixel_height: 0,
         })?;
 
-        let mut cmd = CommandBuilder::new(command);
-        cmd.args(args);
+        // Windows 上通过 PowerShell -Command 包装命令，
+        // 使 .ps1/.cmd/.bat 等非原生可执行文件都能按 PowerShell 的优先级正确解析
+        #[cfg(windows)]
+        let mut cmd = {
+            let mut cmd = CommandBuilder::new("powershell");
+            cmd.arg("-NoLogo");
+            cmd.arg("-Command");
+            cmd.arg(command);
+            cmd.args(args);
+            cmd
+        };
+
+        #[cfg(unix)]
+        let mut cmd = {
+            let mut cmd = CommandBuilder::new(command);
+            cmd.args(args);
+            cmd
+        };
+
         cmd.cwd(std::env::current_dir()?);
         for (k, v) in std::env::vars() {
             cmd.env(&k, &v);

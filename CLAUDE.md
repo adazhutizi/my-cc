@@ -18,7 +18,7 @@ RUST_LOG=debug cargo run -- bash     # 开启调试日志运行
 
 ## CLI 与运行方式
 
-- 默认命令：Unix 使用 `$SHELL`，没有时回退 `/bin/sh`；Windows 使用 `%COMSPEC%`，没有时回退 `cmd.exe`
+- 默认命令：Unix 使用 `$SHELL`，没有时回退 `/bin/sh`；Windows 使用 `powershell`
 - `command` 是要代理运行的程序；命令自己的参数必须放在 `--` 后，避免被 clap 当作 `my-cc` 参数解析
 - `--port` 默认 `8080`；端口被占用时服务端会自动尝试下一个端口
 - `--token` 只保护 WebSocket 连接，浏览器连接时通过查询参数传入：`?token=...`
@@ -42,7 +42,7 @@ PTY ←→ EventBus（broadcast + mpsc 通道 + 输出回放日志） ←→ { �
 
 | 模块 | 职责 |
 |------|------|
-| `src/pty.rs` | PTY 创建、阻塞 I/O 线程、通过 `Arc<Mutex<PtyProcess>>` 调整窗口大小 |
+| `src/pty.rs` | PTY 创建、阻塞 I/O 线程、通过 `Arc<Mutex<PtyProcess>>` 调整窗口大小；Windows 上通过 `powershell -NoLogo -Command` 包装命令以支持 `.ps1`/`.cmd`/`.bat` 等非原生可执行文件 |
 | `src/bus.rs` | `EventBus` — tokio broadcast（输出、resize）+ mpsc（输入）通道；保留最近输出用于回放；`output_replay_from(last_seq)` 支持断点续传 |
 | `src/server.rs` | hyper HTTP + WebSocket 服务器；端口占用时递增重试；Token 认证；前端通过 `include_str!` 嵌入 |
 | `src/protocol.rs` | 二进制 WebSocket 协议：`[1字节类型][payload]`。类型：Output/Input/Resize/Mouse/FeatureToggle/Ping/Pong/ReplayEnd/ReplayMode。Output payload 格式为 `[seq u64 BE][data]`，ReplayMode payload 为 1 字节（0=增量，1=全量） |
