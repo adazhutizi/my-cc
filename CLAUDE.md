@@ -42,7 +42,7 @@ PTY ←→ EventBus（broadcast + mpsc 通道 + 输出回放日志） ←→ { �
 
 | 模块 | 职责 |
 |------|------|
-| `src/pty.rs` | PTY 创建、阻塞 I/O 线程、通过 `Arc<Mutex<PtyProcess>>` 调整窗口大小；Windows 上通过 `powershell -NoLogo -Command` 包装命令以支持 `.ps1`/`.cmd`/`.bat` 等非原生可执行文件 |
+| `src/pty.rs` | PTY 创建、阻塞 I/O 线程、通过 `Arc<Mutex<PtyProcess>>` 调整窗口大小；Windows 上通过 `powershell -NoLogo -Command` 包装命令以支持 `.ps1`/`.cmd`/`.bat` 等非原生可执行文件；Windows 上 `rewrite_lone_esc` 把单独 ESC(`0x1b`) 改写为 win32-input-mode 完整序列，规避 ConPTY 吞掉单独转义起始字节 |
 | `src/bus.rs` | `EventBus` — tokio broadcast（输出、resize）+ mpsc（输入）通道；保留最近输出用于回放；`output_replay_from(last_seq)` 支持断点续传 |
 | `src/server.rs` | hyper HTTP + WebSocket 服务器；端口占用时递增重试；Token 认证；前端通过 `include_str!` 嵌入 |
 | `src/protocol.rs` | 二进制 WebSocket 协议：`[1字节类型][payload]`。类型：Output/Input/Resize/Mouse/FeatureToggle/Ping/Pong/ReplayEnd/ReplayMode。Output payload 格式为 `[seq u64 BE][data]`，ReplayMode payload 为 1 字节（0=增量，1=全量） |
@@ -81,6 +81,7 @@ PTY ←→ EventBus（broadcast + mpsc 通道 + 输出回放日志） ←→ { �
 - Web 客户端通过回放最近的 PTY 原始输出恢复画面；服务端不做终端状态重建，也不解析 ANSI 状态
 - `src/lib.rs` 将模块以 `pub` 重新导出，供集成测试使用（`tests/` 目录中使用 `use my_cc::...`）
 - 前端（`static/index.html`）在编译时通过 `include_str!` 嵌入，无运行时文件服务
+- Windows ConPTY 的输入状态机会把单独的 `0x1b` 当作未完成的转义序列挂起（方向键 `\x1b[A`、Alt+键 `\x1b<key>` 等多字节序列不受影响）；本地键盘经 VT-input 产出 win32-input-mode 完整序列（`\x1b[27;1;27;1;32;1_`，27=VK_ESCAPE），Web 端发的标准 VT 单独 `0x1b` 由 `pty.rs` 的 `rewrite_lone_esc` 改写为同样的完整序列，否则单独 Esc 会被吞掉
 - EventBus 输出日志上限 16384 条；broadcast channel 缓冲区 16384
 - `EventBus::take_input_receiver()` 只能调用一次，PTY writer 是唯一输入消费者
 - 异步测试使用 `#[tokio::test]`；协议测试是同步的

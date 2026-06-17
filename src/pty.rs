@@ -7,6 +7,24 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::bus::EventBus;
 
+/// Windows ConPTY 的输入状态机会把单独的 ESC(0x1b) 当作未完成的转义序列挂起，
+/// 导致 Web/移动端发送的标准 VT 单独 Esc 被吞掉。本地物理键盘经 VT-input 产出的
+/// 是 win32-input-mode 完整序列（\x1b[27;...;_，27=VK_ESCAPE），ConPTY 能正确解析。
+/// 这里把单独 ESC 改写成与之相同的完整按键序列（keydown + keyup），与本地键盘对齐。
+#[cfg(windows)]
+fn rewrite_lone_esc(data: Vec<u8>) -> Vec<u8> {
+    if data.as_slice() == b"\x1b" {
+        b"\x1b[27;1;27;1;32;1_\x1b[27;1;27;0;32;1_".to_vec()
+    } else {
+        data
+    }
+}
+
+#[cfg(not(windows))]
+fn rewrite_lone_esc(data: Vec<u8>) -> Vec<u8> {
+    data
+}
+
 pub struct PtyProcess {
     child: Mutex<Option<Box<dyn portable_pty::Child + Send>>>,
     killer: Mutex<Option<Box<dyn ChildKiller + Send + Sync>>>,
@@ -110,6 +128,7 @@ impl PtyProcess {
         std::thread::spawn(move || {
             let mut input_rx = input_rx;
             while let Some(data) = input_rx.blocking_recv() {
+                let data = rewrite_lone_esc(data);
                 let mut w = writer.lock().unwrap();
                 if w.write_all(&data).is_err() {
                     break;
