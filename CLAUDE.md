@@ -66,6 +66,7 @@ PTY ←→ EventBus（broadcast + mpsc 通道 + 输出回放日志） ←→ { �
 - 连接建立后客户端进入 replay 状态；收到 `ReplayMode(全量)` 时 `term.reset()`；收到 `ReplayEnd` 后恢复正常输入转发
 - 客户端维护 `lastReceivedSeq`，重连时通过 URL 参数 `lastSeq` 实现断点续传；服务端只回放 seq 之后的数据，日志被淘汰时降级为全量回放
 - Web 端保持服务端 PTY 的逻辑 `rows/cols`，用 CSS transform 按浏览器可用宽度等比缩放，不根据浏览器宽度改变 PTY 列数
+- 前端 xterm.js `scrollback` 与服务端回放日志上限对齐（均为 9001），保证全量回放的内容不被前端回滚缓冲截断
 - 自动重连使用指数退避，最大 30 秒；连接期间每 25 秒发送一次 `Ping`
 - 移动端显示快捷键栏：Esc、Tab、Shift+Tab、Ctrl+C、Ctrl+D、Ctrl+O、方向键、修饰键、常用符号和半角/全角切换
 - 移动端使用 `visualViewport` 计算软键盘占位，调整底部状态栏和快捷键栏位置
@@ -82,6 +83,6 @@ PTY ←→ EventBus（broadcast + mpsc 通道 + 输出回放日志） ←→ { �
 - `src/lib.rs` 将模块以 `pub` 重新导出，供集成测试使用（`tests/` 目录中使用 `use my_cc::...`）
 - 前端（`static/index.html`）在编译时通过 `include_str!` 嵌入，无运行时文件服务
 - Windows ConPTY 的输入状态机会把单独的 `0x1b` 当作未完成的转义序列挂起（方向键 `\x1b[A`、Alt+键 `\x1b<key>` 等多字节序列不受影响）；本地键盘经 VT-input 产出 win32-input-mode 完整序列（`\x1b[27;1;27;1;32;1_`，27=VK_ESCAPE），Web 端发的标准 VT 单独 `0x1b` 由 `pty.rs` 的 `rewrite_lone_esc` 改写为同样的完整序列，否则单独 Esc 会被吞掉
-- EventBus 输出日志上限 16384 条；broadcast channel 缓冲区 16384
+- EventBus 输出日志上限 9001 条（与 Windows Terminal 默认回滚行数一致，`bus.rs` 的 `MAX_OUTPUT_LOG`）；broadcast channel 缓冲区 16384
 - `EventBus::take_input_receiver()` 只能调用一次，PTY writer 是唯一输入消费者
 - 异步测试使用 `#[tokio::test]`；协议测试是同步的

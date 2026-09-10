@@ -1,6 +1,9 @@
 use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::{broadcast, mpsc, Mutex};
 
+/// 回放日志上限（条数），与 Windows Terminal 默认回滚行数保持一致
+const MAX_OUTPUT_LOG: usize = 9001;
+
 #[derive(Debug, Clone)]
 pub struct OutputEvent {
     pub seq: u64,
@@ -24,7 +27,7 @@ impl EventBus {
         let (resize_tx, _) = broadcast::channel(16);
         EventBus {
             output_tx,
-            output_log: Arc::new(StdMutex::new(Vec::with_capacity(buffer))),
+            output_log: Arc::new(StdMutex::new(Vec::with_capacity(MAX_OUTPUT_LOG))),
             output_seq: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             input_tx,
             input_rx: Arc::new(Mutex::new(Some(input_rx))),
@@ -68,8 +71,8 @@ impl EventBus {
         };
         let mut log = self.output_log.lock().unwrap();
         log.push(event.clone());
-        if log.len() > 16384 {
-            let excess = log.len() - 16384;
+        if log.len() > MAX_OUTPUT_LOG {
+            let excess = log.len() - MAX_OUTPUT_LOG;
             log.drain(0..excess);
         }
         event
